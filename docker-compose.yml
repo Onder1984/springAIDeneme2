@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: tactical-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: tactical_ew_db
+      POSTGRES_USER: ew_admin
+      POSTGRES_PASSWORD: ew_secret_password
+    volumes:
+      # Verilerin silinmemesi için kalıcı Docker named volume (Named Volume Persistence)
+      - tactical_ew_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ew_admin -d tactical_ew_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  # Konteyner dursa veya silinse bile veritabanındaki kayıtları diske kalıcı olarak bağlar
+  tactical_ew_postgres_data:
+    name: tactical_ew_postgres_data

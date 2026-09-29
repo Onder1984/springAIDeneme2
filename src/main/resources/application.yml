@@ -1,0 +1,40 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: tactical-ew-copilot
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/tactical_ew_db
+    username: ew_admin
+    password: ew_secret_password
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      # Verilerin silinmemesi ve kalıcı olması için 'update' kullanılır.
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+
+  ai:
+    model:
+      chat: google-genai
+    google:
+      genai:
+        api-key: ${GEMINI_API_KEY:${GOOGLE_API_KEY:}}
+        chat:
+          options:
+            model: gemini-3.5-flash-lite
+            temperature: 0.1
+
+logging:
+  level:
+    root: INFO
+    com.c2.ew: DEBUG
+    org.springframework.ai: INFO
+    org.hibernate.SQL: WARN
