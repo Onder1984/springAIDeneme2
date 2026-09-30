@@ -87,6 +87,8 @@ CREATE TABLE emitter_fixes (
     status VARCHAR(16) NOT NULL, -- ACTIVE, INTERMITTENT, SILENT
     band VARCHAR(8) NOT NULL,     -- X, S, C, Ku, L, UHF, VHF
     frequency_mhz DOUBLE PRECISION NOT NULL,
+    radar_type VARCHAR(64) NOT NULL,   -- PANTSIR_S1_TRACKING, PATRIOT_AN_MPQ53, vb.
+    platform_type VARCHAR(32) NOT NULL,-- AIRBORNE, GROUND, NAVAL, UNKNOWN
     pri_us DOUBLE PRECISION,
     pulse_width_us DOUBLE PRECISION,
     modulation VARCHAR(32),
@@ -103,6 +105,7 @@ CREATE TABLE emitter_fixes (
 -- Mekânsal ve Taktik İndeksler
 CREATE INDEX idx_fixes_location ON emitter_fixes USING GIST (location);
 CREATE INDEX idx_fixes_band_status ON emitter_fixes (band, status);
+CREATE INDEX idx_fixes_radar_platform ON emitter_fixes (radar_type, platform_type);
 CREATE INDEX idx_fixes_freq ON emitter_fixes (frequency_mhz);
 CREATE INDEX idx_fixes_accuracy ON emitter_fixes (semi_major_axis_meters);
 CREATE INDEX idx_fixes_last_seen ON emitter_fixes (last_seen DESC);
@@ -175,6 +178,15 @@ Milyonlarca satır üzerinde çalışırken Spring AI araçlarının (Tools) nas
 - **Problem:** Klasik `OFFSET 100000 LIMIT 50` sorguları derin sayfalarda veritabanını felç eder.
 - **Çözüm:** `WHERE (last_seen, fix_id) < (:lastSeenCursor, :lastIdCursor) ORDER BY last_seen DESC, fix_id DESC LIMIT 50`.
 - Operatör *"Sonraki 20 hedefi getir"* dedikçe ajan cursor üzerinden anında sıradaki dilimi çeker.
+
+### Katman 5: Spektral Dağılım ve Zaman-Frekans Analitiği (Scatter / Waterfall Analytics)
+- **Problem:** Operatör *"Zaman-frekans dağılımını göster"* veya *"Hangi radar hangi frekansta ne zaman aktifti?"* dediğinde binlerce ölçüm noktasının ham koordinatları LLM'e yüklenmemelidir.
+- **Çözüm Metodu:** `getTimeFrequencyScatterData(band, radarType, platformType, limit)`
+- **Kritik Frontend Çözümü:** Chart.js `scatter` grafiğine metin tabanlı saat (`"19:04"`) verilmesi `NaN` hatası üretir. Mimari olarak zaman **gece yarısından itibaren dakika cinsinden sayısal eksene (`hours * 60 + minutes`)** çevrilir; eksen tick callback'inde tekrar `"HH:mm"` string'ine dönüştürülür. Zamansal boşluklar korunarak gerçekçi bir spektrum şelalesi çizilir.
+
+### Kritik Güvenlik Kalkanı: Savunmacı Parametre Temizleme (LLM Input Sanitization)
+- **Problem:** LLM'ler tool argümanı oluştururken parametre belirtilmediğinde sıkça `radarType="*"`, `band="ALL"`, `status="ANY"`, `threatLevel=0` veya `null` string'i üretir. Doğrudan SQL/JPA Specification'a girdiğinde sorgu sıfır sonuç döner.
+- **Mimari Çözüm:** `cleanParam(val)` fonksiyonu tüm wildcard/all değerlerini `null`a çevirerek JPA Specification katmanının `cb.conjunction()` (filtresiz / tümü) moduna geçmesini sağlar.
 
 ---
 
