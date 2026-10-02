@@ -1,19 +1,13 @@
 package com.c2.ew.agent.service;
 
 import com.c2.ew.agent.dto.PaginationMetadata;
+import com.c2.ew.agent.dto.TacticalComintSummaryDto;
+import com.c2.ew.agent.dto.TacticalEmissionSummaryDto;
 import com.c2.ew.agent.dto.TacticalQueryRequest;
 import com.c2.ew.agent.dto.TacticalResponseDto;
 import com.c2.ew.agent.geojson.TacticalGeoJsonBuilder;
+import com.c2.ew.agent.tools.ComintEmissionTools;
 import com.c2.ew.agent.tools.RadarEmissionTools;
-import com.c2.ew.domain.model.EmitterFix;
-import com.c2.ew.domain.model.EmitterLob;
-import com.c2.ew.infrastructure.repository.TacticalEmissionRepository;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
@@ -22,230 +16,255 @@ import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-/**
- * Taktik Elektronik Harp Copilot Ajan Servisi
- * Multi-Turn Chat Memory (Sohbet Hafızası) ve Akıllı Sayfalama Destekli
- */
+import java.util.*;
+
 @Service
 public class TacticalAgentService {
 
     private static final Logger log = LoggerFactory.getLogger(TacticalAgentService.class);
 
     private static final String SYSTEM_DIRECTIVE = """
-        Sen bir Taktik Elektronik Harp (EH / EW) Komuta Kontrol (C2) Durumsal Farkındalık ve Analiz Copilot Ajanısın.
-        Görevin, taktik sahadaki radar kestirimlerini (EmitterFix) ve sensör yön kestirim hatlarını (Line of Bearing - LOB) analiz ederek operatöre net, doğru ve askeri standartlarda bilgi sunmaktır.
+        Sen bir Taktik Elektronik Harp (EH / EW) ve Komuta Kontrol (C2) Durumsal Farkındalık ve Analiz Copilot Ajanısın.
+        Görevin, taktik sahadaki:
+        1. RADAR EH (ELINT / RESM - 37 Parametreli Radar Emisyonları): Kestirim elipsleri, kerteriz yön hatları, frekans/PRI/PW/ATP zarfları, HSS mevzileri, taciz ve elektronik taarruz (ET) durumları.
+        2. MUHABERE EH (COMINT / CESM - 30 Parametreli Telsiz ve Haberleşme Yayınları): HF/VHF telsiz ağları, kriptolu haberleşmeler, darbe patlama (burst), karıştırma gayda/gürültü, lisanlar (Arapça, Rusça, İngilizce, Türkçe vb.), çağrı adları (callsign link analizi), DMR/D-Star protokolleri.
         
-        UYULMASI ZORUNLU KATİ BÜYÜK VERİ VE OPERASYONEL KURALLAR:
-        1. DETERMINIZM: Asla kafandan koordinat, kestirim veya sayı uydurma. Tüm verileri mutlaka sana verilen araçları çağırarak çek.
-        2. BÜYÜK VERİ VE OPTİMİZASYON KURALI:
-           - Veritabanında binlerce LOB ve yüzlerce radar kestirimi bulunmaktadır.
-           - 'Genel durum nedir?', 'Özet geç', 'Grafik çiz' gibi makro sorularda ASLA tüm satırları çekme; 'getTacticalSummaryStats()' ve 'countEmitterLobs()' araçlarını çağır.
-           - 'Kritik hedefler', 'Atış kontrol radarları', 'En tehlikeli tehditler' dediğinde 'queryPriorityEmitters(limit=15)' aracını kullan.
-           - Sayfalı listeleme gerektiğinde 'queryEmitterFixesPaged()' veya 'queryEmitterLobsPaged()' araçlarını kullan.
-        3. ÇOKLU TUR SOHBET VE SAYFA GEÇİŞİ (NEXT-PAGE) KURALI (HAYATİ ÖNEMDE):
-           - Kullanıcı 'Sonraki sayfayı ver', 'bana sonraki sayfayı da ver', 'Devamını getir', 'Sıradaki hedefleri göster', 'İkinci sayfayı aç' dediğinde:
-             * KESİNLİKLE 'getNextPageOfFixes()' (LOB ise 'getNextPageOfLobs()') aracını çağır!
-             * Bu araç önceki filtreleri (bant, aktiflik vb.) otomatik olarak hatırlar ve bir sonraki sayfayı (page + 1) çeker.
-             * Operatöre 'Önceki kriterleriniz doğrultusunda Sayfa X/Y listelenmektedir' şeklinde net bilgi ver.
-           - Kullanıcı 'Önceki sayfaya dön', 'Geri git', 'Önceki sayfayı göster' dediğinde 'getPrevPageOfFixes()' aracını çağır.
-        4. HATA VE BELİRSİZLİK DEĞERLENDİRMESİ:
-           - semiMajorAxisMeters > 4000 olan elipsler raporda 'DÜŞÜK DOĞRULUKLU / ŞÜPHELİ',
-           - semiMajorAxisMeters <= 1500 olan elipsler 'YÜKSEK DOĞRULUKLU / TEYİTLİ' olarak sınıflandırılmalıdır.
+        KRİTİK VERİTABANI GERÇEKLERİ VE KESİN ALAN AYRIMI (ÇOK ÖNEMLİ):
+        - VERİTABANINDA TOPLAM 160 ADET RADAR (ELINT) VE 120 ADET MUHABERE/TELSİZ (COMINT) YAYINI BULUNMAKTADIR.
+        - ASLA muhabere/telsiz yayını sayısına 160 deme! ASLA radar sayısına 120 deme! Sayıları birbiriyle karıştırma!
+        
+        KESİN ALAN AYRIMI (ASLA İKİ ALANIN ARAÇLARINI BİRLİKTE ÇAĞIRMA):
+        - Operatör 'kripto', 'kriptolu haberleşme', 'telsiz', 'muhabere', 'haberleşme', 'çağrı adı', 'lisan', 'ses', 'VHF', 'HF', 'DMR', 'D-Star', 'frekans atlamalı telsiz' dediğinde:
+          BU KESİNLİKLE VE SADECE MUHABERE (COMINT) SORGUSUDUR!
+          ASLA Radar araçlarını ('queryEmissionsPaged', 'getTacticalMacroStats', 'queryPriorityThreats') ÇAĞIRMA!
+          YALNIZCA Muhabere araçlarını ('queryComintEmissionsPaged', 'getComintMacroStats', 'queryPriorityComintThreats') ÇAĞIR!
+        - Operatör 'radar', 'ELINT', 'HSS', 'hava savunma', 'PRI', 'PW', 'ATP', 'radar taciz', 'X band', 'S band', 'Ku band' dediğinde:
+          BU KESİNLİKLE VE SADECE RADAR (ELINT) SORGUSUDUR!
+          ASLA Muhabere araçlarını ÇAĞIRMA!
+          YALNIZCA Radar araçlarını ÇAĞIR!
+        - Radar ve Muhabere araçlarını AYNI ANDA YALNIZCA operatör açıkça 'müşterek', 'hem radar hem telsiz', 'tüm sahadaki unsurlar', 'tüm elektronik harp' gibi her iki alanı birden istediğinde çağır.
+        
+        UYULMASI ZORUNLU KATI KURALLAR:
+        0. SELAMLAMA VE NEZAKET KURALI:
+           - Operatör 'merhaba', 'selam', 'günaydın', 'nasılsın' gibi bir selamlama yaptığında veya sohbet ettiğinde ASLA veritabanı veya listeleme araçlarını çağırma.
+           - Doğrudan kibar, profesyonel askeri bir dille selamlama yap:
+             'Merhaba Komutanım. Elektronik Harp (Radar/ELINT ve Muhabere/COMINT) Durumsal Farkındalık Copilotu göreve hazırdır. Sahadaki radar emisyonları, telsiz muhabere ağları, HSS mevzileri veya elektronik taarruz durumları hakkında nasıl yardımcı olabilirim?'
+             şeklinde yanıt ver.
+        1. DETERMINIZM: Asla kafandan koordinat, frekans, radar adı, telsiz çağrı adı veya sayı uydurma. Tüm verileri mutlaka sana verilen araçları çağırarak çek.
+        2. DOĞRU ARAÇ SEÇİMİ VE ÖZETLEME:
+           - Genel taktik durum veya makro resim istendiğinde:
+             * Radarlar için 'getTacticalMacroStats()' aracını çağır.
+             * Telsiz/muhabere için 'getComintMacroStats()' aracını çağır.
+           - Kritik tehditler:
+             * Düşman radarları / HSS dendiğinde 'queryPriorityThreats(limit=15)' aracını kullan.
+             * Düşman telsizleri / Kriptolu / Karıştırma yayınları dendiğinde 'queryPriorityComintThreats(limit=15)' aracını kullan.
+           - Belirli filtre veya frekans/PRI/PW aralığı arandığında:
+             * Radar için 'queryEmissionsPaged(...)'
+             * Muhabere için 'queryComintEmissionsPaged(...)'
+           - Telsiz Ağı, Komuta Merkezleri ve Topoloji Analizi:
+             * Operatör telsiz haberleşme ağı, ağ topolojisi, komuta merkezleri/hub'lar, kimin kiminle konuştuğu ağ yapısı veya link analizini sorduğunda:
+               MUTLAKA 'getComintNetworkTopologyGraph(limit=50)' aracını çağır!
+             * Tek bir çağrı adının (örn. Kartal-1, Volga-04) kimlerle konuştuğunu bulmak için 'queryComintCallsignNetwork(cagriAdi)' aracını çağır.
+           - Radar Operasyonel Yayın Pencereleri ve Çalışma Yoğunluğu Analizi:
+             * Operatör 'operasyonel yayın penceresi', 'yayın penceresi', 'radar çalışma yoğunluğu', 'yayın süresi yoğunluğu', 'hangi saatlerde aktifler', 'radar görev döngüsü', 'yayın pencereleri' sorduğunda:
+               MUTLAKA 'getOperationalTransmissionWindows()' aracını çağır!
+           - Tekil hedef detayları:
+             * Radar için 'getEmissionDetails(emissionId)'
+             * Muhabere için 'getComintDetails(comintId)'
+        3. ARALIKLI SORGULAMA KURALI (INTERVAL OVERLAP):
+           - Operatör frekans (örn. '8500-10000 MHz' veya '150-170 MHz VHF'), PRI (örn. '500-1200 µs'), PW veya ATP aralığı sorduğunda:
+             * minFrekansMhz, maxFrekansMhz gibi parametreleri doldur.
+        4. LİSTELEME VE SAYFALAMA KURALI (HAYATİ ÖNEMDE):
+           - Operatör spesifik bir analiz veya sayı sorusu sorduğunda (Örn: 'kaç adet radar var?', 'en çok hangi çağrı adı konuşmuş?', 'bu hedef kiminle konuştu?'):
+             * Doğrudan analitik araçları (getTacticalMacroStats, getComintMacroStats, getMostActiveCallsigns, queryComintCallsignNetwork) çağır.
+             * Bu gibi soru ve analizlerde ASLA yanıtında 'sonraki sayfayı görmek için...' deme ve sayfalama konusu açma.
+           - Sayfalama SADECE operatör açıkça birden fazla kaydın listelenmesini istediğinde ('listele', 'tablo olarak dök', 'hedefleri göster', 'kayıtları getir', 'kriptolu haberleşmeleri getir') ve dönen kayıtlar kısıtlandığında geçerlidir.
+           - Kullanıcı 'Sonraki sayfayı ver', 'bana sonraki sayfayı da ver', 'Devamını getir' dediğinde:
+             * Eğer devam eden/önceki sorgu Muhabere / Telsiz / Kripto / COMINT ile ilgiliyse:
+               MUTLAKA VE YALNIZCA 'getNextPageOfComintEmissions()' aracını çağır! ASLA 'queryEmissionsPaged' veya 'getNextPageOfEmissions' gibi radar araçlarını ÇAĞIRMA!
+             * Eğer devam eden/önceki sorgu Radar / HSS / ELINT ile ilgiliyse:
+               MUTLAKA VE YALNIZCA 'getNextPageOfEmissions()' aracını çağır! ASLA muhabere araçlarını ÇAĞIRMA!
+           - 'Önceki sayfaya dön' dendiğinde aynı kural geçerlidir.
         5. ÇIKTI FORMATI:
-           - Genel durum istendiğinde:
-             ## OPERASYONEL ÖZET
-             ## ÖNCELİKLİ TEHDİTLER VE DOĞRULUK DEĞERLENDİRMESİ
-             ## AÇIKTA KALAN LOB HATLAR VE SENSÖR YÜKLERİ
-             ## HAREKÂT ÖNERİLERİ
-        6. İNTERAKTİF GRAFİK YETENEĞİ (CHART.JS DESTEĞİ):
-           - Operatör bir grafik veya görselleştirme istediğinde, yanıtının sonuna ```json:chart formatında geçerli bir JSON bloğu ekle.
-        7. LOB VE İLİŞKİLENDİRME (ASSOCIATION) SORGULARI KURALI:
-           - Kullanıcı 'yetim LOB listesi', 'ilişkilendirilmemiş LOB'lar', 'açıkta kalan hatlar' istediğinde:
-             * KESİNLİKLE 'queryEmitterLobsPaged(associationStatus="UNASSOCIATED")' aracını çağır!
-           - Kullanıcı 'kestirimlerle ilişkilendirilmiş LOB'lar' veya 'ilişkili LOB listesi' istediğinde:
-             * KESİNLİKLE 'queryEmitterLobsPaged(associationStatus="ASSOCIATED")' aracını çağır!
-           - Kullanıcı genel veya tüm LOB'ları istediğinde 'associationStatus="ALL"' (veya null) kullan.
-           - Belirli bir frekans bandı (örn. 'Ku', 'X') istenmişse 'band' parametresini doldur.
-           - Kullanıcı belirli bir sensör (örn. 'DF-ALPHA') açıkça belirtmedikçe 'sensorNodeId' parametresini KESİNLİKLE null bırak (asla kafandan tek bir sensör seçme ve asla 'ALL' stringi verme).
-           - Tüm sensör düğümlerinden (DF-ALPHA, DF-BRAVO, UAV-POD-1, UAV-POD-2 vb.) tespit edilmiş yetim sinyaller dengeli şekilde tablolanmalıdır.
-        8. RADAR TİPİ VE PLATFORM TÜRÜ SORGULARI KURALI:
-           - Sahadaki kestirimler 'radarType' (örn. '92N6E Tomb Stone (S-400)', 'AN/MPQ-64 Sentinel', 'AN/APG-68 (F-16)', 'P-18 Spoon Rest', 'Flycatcher') ve 'platformType' ('AIRBORNE', 'NAVAL', 'LAND_MOBILE', 'FIXED_SITE') kimliklerine sahiptir.
-           - Kullanıcı 'Havadaki radarlar', 'Uçak/İHA tehditleri' dediğinde KESİNLİKLE 'queryEmitterFixesPaged(platformType="AIRBORNE")' kullan! (Kullanıcı açıkça belirtmedikçe 'band' ve 'radarType' parametrelerini KESİNLİKLE null bırak; asla '*' ve asla tek bir rastgele frekans bandı uydurma!).
-           - Kullanıcı 'Deniz hedefleri', 'Gemiler' dediğinde 'queryEmitterFixesPaged(platformType="NAVAL")' kullan.
-           - Kullanıcı 'S-400', 'Sentinel', 'Patriot' gibi model sorduğunda 'queryEmitterFixesPaged(radarType="...")' filtresini kullan.
-           - Tehditleri listelerken hedef kimliğini mutlaka radar adı ve platformuyla zenginleştir (Örn: 'FIX-0012 [92N6E S-400 / Mobil Kara Bataryası]').
-        9. ZAMAN - FREKANS (TIME-FREQUENCY / SPEKTROGRAM / SAÇILIM) GRAFİĞİ KURALI:
-           - Operatör 'zaman frekans grafiği', 'çalışma yoğunluğu grafiği', 'waterfall', 'spektrogram', 'frekans zaman dağılımı' istediğinde:
-             * KESİNLİKLE 'getTimeFrequencyScatterData()' aracını çağır!
-             * Dönen verilerle operatöre operasyonel zaman-frekans ve radar aktivite yorumunu yap ve yanıtının sonuna ```json:chart formatında geçerli bir Chart.js scatter konfigürasyonu ekle.
-             * Konfigürasyon formatı:
-               {
-                 "type": "scatter",
-                 "data": {
-                   "datasets": [{
-                     "label": "Radar Yayınları (Zaman - Frekans)",
-                     "data": [
-                       {"x": "14:30", "y": 9350, "radarType": "92N6E Tomb Stone (S-400)", "platformType": "LAND_MOBILE", "threatLevel": "CRITICAL"}
-                     ],
-                     "backgroundColor": "rgba(0, 229, 255, 0.75)",
-                     "borderColor": "#00e5ff",
-                     "pointRadius": 6
-                   }]
-                 },
-                 "options": {
-                   "scales": {
-                     "x": { "title": { "display": true, "text": "Zaman (Saat)" } },
-                     "y": { "title": { "display": true, "text": "Frekans (MHz)" } }
-                   }
-                 }
+           - Yanıtlarını şık askeri başlıklar, markdown tabloları ve madde imleriyle sun.
+             ## TAKTİK OPERASYONEL BRİFİNG
+             ## TEŞHİS VE TEHDİT DEĞERLENDİRMESİ (RADAR & MUHABERE)
+             ## HABERLEŞME AĞLARI VE ELEKTRONİK TAARRUZ DURUMU
+             ## HAREKÂT TAVSİYELERİ
+        6. GÖRSELLEŞTİRME VE GRAFİK FORMATI (HAYATİ ÖNEMDE):
+           - Operatör telsiz haberleşme ağı, komuta merkezleri veya ağ topolojisi sorduğunda:
+             * 'getComintNetworkTopologyGraph(limit=50)' aracından dönen 'nodes' ve 'links' verileriyle brifinginin sonuna MUTLAKA aşağıdaki formatta ```chart kod bloğu ekle:
+             ```chart
+             {
+               "engine": "echarts",
+               "type": "graph",
+               "title": "Telsiz Muhabere Ağ Topolojisi & Komuta Merkezleri",
+               "data": {
+                 "nodes": [ ...aractan gelen nodes dizisi... ],
+                 "links": [ ...aractan gelen links dizisi... ],
+                 "categories": [{"name": "Komuta/Master Hub"}, {"name": "Röle/Link İstasyonu"}, {"name": "Elektronik Taarruz/Jammer"}, {"name": "Taktik Saha İstasyonu"}]
                }
+             }
+             ```
+           - Frekans dağılımı, zaman-frekans saçılımı (scatter) ve pasta grafiği için standart Chart.js şemasını kullan.
         """;
 
     private final ChatClient chatClient;
-    private final RadarEmissionTools tools;
-    private final TacticalEmissionRepository repository;
     private final TacticalGeoJsonBuilder geoJsonBuilder;
-    private final ChatMemory chatMemory;
+    private final RadarEmissionTools radarTools;
+    private final ComintEmissionTools comintTools;
 
-    @Autowired
     public TacticalAgentService(
-        Optional<ChatClient.Builder> chatClientBuilder,
-        RadarEmissionTools tools,
-        TacticalEmissionRepository repository,
+        ChatClient.Builder chatClientBuilder,
+        @Autowired(required = false) ChatMemory chatMemory,
         TacticalGeoJsonBuilder geoJsonBuilder,
-        ChatMemory chatMemory
+        RadarEmissionTools radarTools,
+        ComintEmissionTools comintTools
     ) {
-        this.tools = tools;
-        this.repository = repository;
         this.geoJsonBuilder = geoJsonBuilder;
-        this.chatMemory = chatMemory;
+        this.radarTools = radarTools;
+        this.comintTools = comintTools;
 
-        if (chatClientBuilder.isPresent()) {
-            this.chatClient = chatClientBuilder.get()
-                .defaultSystem(SYSTEM_DIRECTIVE)
-                .defaultTools(tools)
-                .defaultAdvisors(MessageChatMemoryAdvisor.builder(chatMemory).build())
-                .build();
-        } else {
-            this.chatClient = null;
+        ChatClient.Builder builder = chatClientBuilder
+            .defaultSystem(SYSTEM_DIRECTIVE)
+            .defaultTools(radarTools, comintTools);
+
+        if (chatMemory != null) {
+            builder.defaultAdvisors(
+                MessageChatMemoryAdvisor.builder(chatMemory).build()
+            );
         }
+
+        this.chatClient = builder.build();
     }
 
-    public TacticalResponseDto analyzeTacticalSituation(TacticalQueryRequest request) {
-        String prompt = (request != null && request.userPrompt() != null && !request.userPrompt().isBlank())
-            ? request.userPrompt()
-            : "Harekât sahasındaki tüm güncel radar yayınlarını ve açıkta kalan LOB hatlarını analiz et, durum değerlendirmesi sun.";
+    private String normalizeText(String text) {
+        if (text == null) return "";
+        return text.toLowerCase(Locale.ROOT)
+            .replace('\u0131', 'i')
+            .replace('\u0130', 'i')
+            .replace('\u00f6', 'o')
+            .replace('\u00d6', 'o')
+            .replace('\u00fc', 'u')
+            .replace('\u00dc', 'u')
+            .replace('\u015f', 's')
+            .replace('\u015e', 's')
+            .replace('\u00e7', 'c')
+            .replace('\u00c7', 'c')
+            .replace('\u011f', 'g')
+            .replace('\u011e', 'g');
+    }
 
-        String convId = (request != null && request.conversationId() != null && !request.conversationId().isBlank())
+    private boolean isPureCountOrSummaryQuestion(String prompt) {
+        if (prompt == null || prompt.isBlank()) return false;
+        String p = normalizeText(prompt);
+        if (p.contains("sayfa") || p.contains("sonraki") || p.contains("onceki") || p.contains("devam") ||
+            p.contains("listele") || p.contains("kayit") || p.contains("dok") || p.contains("getir") || p.contains("ver")) {
+            return false;
+        }
+        return p.contains("kac adet") || p.contains("kac tane") || p.contains("sayisi nedir") || 
+               p.contains("sayi olarak") || p.contains("toplam kac");
+    }
+
+    private boolean isListingOrPaginationIntent(String prompt) {
+        if (prompt == null || prompt.isBlank()) return false;
+        String p = normalizeText(prompt);
+
+        // 1. Sayfa gecisleri
+        if (p.contains("sonraki") || p.contains("devam") || p.contains("siradaki") || 
+            p.contains("onceki") || p.contains("geri") || p.contains("sayfa")) {
+            return true;
+        }
+
+        // 2. Sayi / miktar / en cok / kim / ozet sorulari liste DEGILDIR
+        if (isPureCountOrSummaryQuestion(prompt)) {
+            return false;
+        }
+
+        // 3. Dogrudan listeleme veya dokum talepleri
+        boolean matched = (p.contains("listele") || p.contains("liste") || p.contains("tablo") || 
+            p.contains("dok") || p.contains("goster") || p.contains("sayfali") || 
+            p.contains("hedefleri ver") || p.contains("radarlari ver") || 
+            p.contains("yayinlari ver") || p.contains("telsizleri ver") || p.contains("tehditleri ver") || 
+            p.contains("getir") || p.contains("dokum") || p.contains("kayitlar") || p.contains("kayitlari"));
+        log.info("isListingOrPaginationIntent prompt='{}' -> normalized='{}', matched={}", prompt, p, matched);
+        return matched;
+    }
+
+    public TacticalResponseDto processTacticalQuery(TacticalQueryRequest request) {
+        String conversationId = (request != null && request.conversationId() != null && !request.conversationId().isBlank())
             ? request.conversationId()
-            : "c2-default-session";
+            : "c2-tactical-session";
 
-        List<String> traceLogs = new ArrayList<>();
-        traceLogs.add("📡 [İSTEMCİ -> BAŞLATILDI] Operatör sorgusu: \"" + prompt + "\" (Oturum: " + convId + ")");
-        traceLogs.add("🧠 [SOHBET HAFIZASI & SAYFALAMA AKTİF] Multi-Turn context devrede.");
-        traceLogs.add("🚀 [OUTBOUND -> GOOGLE GEMINI] Prompt ve araç deklarasyonları Gemini modeline iletildi.");
+        RadarEmissionTools.setCurrentConversationId(conversationId);
+        ComintEmissionTools.setCurrentConversationId(conversationId);
 
-        RadarEmissionTools.setCurrentConversationId(convId);
-        RadarEmissionTools.clearSession();
+        String userPrompt = (request != null && request.userPrompt() != null) ? request.userPrompt() : "Sahadaki genel taktik durumu ve öncelikli hedefleri özetle.";
+        RadarEmissionTools.resetTurnFlags(conversationId);
+        ComintEmissionTools.resetTurnFlags(conversationId);
+        log.info("Operatör Taktik Sorgusu İşleniyor [ConversationId: {}]: {}", conversationId, userPrompt);
 
-        String briefing;
         try {
-            if (chatClient != null) {
-                log.info("Gemini ChatClient ile analiz başlatılıyor: prompt='{}', convId='{}'", prompt, convId);
-                briefing = chatClient.prompt()
-                    .user(prompt)
-                    .advisors(advisorSpec -> advisorSpec.param("chat_memory_conversation_id", convId))
-                    .call()
-                    .content();
-
-                List<String> toolCalls = RadarEmissionTools.getCapturedLogs();
-                traceLogs.addAll(toolCalls);
-
-                traceLogs.add(String.format("✅ [INBOUND -> GEMINI YANITI] Model analiz ve brifing sentezini tamamladı (%d karakter).",
-                    briefing != null ? briefing.length() : 0));
-            } else {
-                log.warn("ChatClient mevcut değil, deterministik kural tabanlı brifing üretiliyor.");
-                traceLogs.add("⚠️ [UYARI] ChatClient başlatılamadı, deterministik kural motoru devrede.");
-                briefing = generateRuleBasedBriefing(prompt);
+            String operationalBriefing = null;
+            int maxRetries = 3;
+            for (int attempt = 1; attempt <= maxRetries; attempt++) {
+                try {
+                    operationalBriefing = chatClient.prompt()
+                        .advisors(advisorSpec -> advisorSpec.param("chat_memory_conversation_id", conversationId))
+                        .user(userPrompt)
+                        .call()
+                        .content();
+                    break;
+                } catch (Exception ex) {
+                    log.warn("Gemini API çağrısı geçici hata aldı (Deneme {}/{}): {}", attempt, maxRetries, ex.getMessage());
+                    if (attempt == maxRetries) {
+                        throw ex;
+                    }
+                    try {
+                        Thread.sleep(1200L * attempt);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw ex;
+                    }
+                }
             }
+
+            List<String> executionLogs = new ArrayList<>();
+            executionLogs.addAll(RadarEmissionTools.drainCallLogs());
+            executionLogs.addAll(ComintEmissionTools.drainCallLogs());
+
+            List<TacticalEmissionSummaryDto> queriedEmissions = RadarEmissionTools.drainQueriedEmissions();
+            List<TacticalComintSummaryDto> queriedComints = ComintEmissionTools.drainQueriedComints();
+
+            // Sayfalama bilgisini güvenli şekilde al
+            PaginationMetadata pagination = RadarEmissionTools.drainPaginationMetadata(conversationId);
+            if (pagination == null) {
+                pagination = ComintEmissionTools.drainPaginationMetadata(conversationId);
+            }
+
+            if (pagination != null && isPureCountOrSummaryQuestion(userPrompt)) {
+                // Salt sayı/miktar sorulduysa sayfalama barını gizle
+                pagination = null;
+            }
+
+            if (pagination == null && !isListingOrPaginationIntent(userPrompt)) {
+                RadarEmissionTools.resetTurnFlags(conversationId);
+                ComintEmissionTools.resetTurnFlags(conversationId);
+            }
+
+            Map<String, Object> tacticalGeoJson = geoJsonBuilder.buildUnifiedFeatureCollection(queriedEmissions, queriedComints);
+
+            log.info("Taktik analiz tamamlandı. Yapılan araç çağrıları: {}", executionLogs);
+            return new TacticalResponseDto(operationalBriefing, tacticalGeoJson, executionLogs, pagination);
+
         } catch (Exception ex) {
-            log.error("AI modeliyle iletişim hatası: {}. Deterministik taktik brifinge geçiliyor.", ex.getMessage(), ex);
-            List<String> toolCalls = RadarEmissionTools.getCapturedLogs();
-            traceLogs.addAll(toolCalls);
-
-            String errorDetail = ex.getMessage() != null ? ex.getMessage() : ex.toString();
-            traceLogs.add("❌ [HATA -> LLM ÇAĞRISI BAŞARISIZ]: " + errorDetail);
-
-            String userNote = "\n\n> [!NOTE]\n> *Not: LLM sağlayıcısı bağlantısında bir gecikme/hata oluştu (" + ex.getClass().getSimpleName() + "). Deterministik PostgreSQL kural motoru devreye girdi.*";
-            briefing = generateRuleBasedBriefing(prompt) + userNote;
+            log.error("Taktik Sorgu İşleme Hatası: {}", ex.getMessage(), ex);
+            return new TacticalResponseDto(
+                "❌ **Taktik Analiz Hatası:** " + ex.getMessage() + "\nLütfen sistem telemetri loglarını ve API bağlantınızı kontrol ediniz.",
+                Collections.emptyMap(),
+                List.of("HATA: " + ex.getMessage()),
+                null
+            );
         }
-
-        Map<String, EmitterFix> capturedFixes = RadarEmissionTools.getCapturedFixes();
-        Map<String, EmitterLob> capturedLobs = RadarEmissionTools.getCapturedLobs();
-
-        Collection<EmitterFix> fixesForGeoJson;
-        Collection<EmitterLob> lobsForGeoJson;
-
-        if (!capturedFixes.isEmpty() || !capturedLobs.isEmpty()) {
-            fixesForGeoJson = capturedFixes.values();
-            lobsForGeoJson = capturedLobs.values();
-        } else {
-            fixesForGeoJson = repository.findTopThreats(20);
-            lobsForGeoJson = repository.findLobs(null, null, null, null, null, null).stream().limit(30).toList();
-        }
-
-        Map<String, Object> geoJson = geoJsonBuilder.buildTacticalFeatureCollection(fixesForGeoJson, lobsForGeoJson, Collections.emptySet());
-        int featureCount = ((List<?>) geoJson.getOrDefault("features", List.of())).size();
-        traceLogs.add("🗺️ [SEÇİCİ GEOJSON OLUŞTURULDU] Bu analize ait " + fixesForGeoJson.size() +
-            " kestirim ve " + lobsForGeoJson.size() + " LOB hattı hazırlandı (" + featureCount + " taktik harita unsuru).");
-
-        // Sayfalama bilgisi varsa DTO'ya ekle
-        PaginationMetadata pagination = RadarEmissionTools.getLastPaginationMetadata();
-        if (pagination != null && pagination.hasMore()) {
-            traceLogs.add(String.format("📄 [SAYFALAMA BUTONU HAZIRLANDI] Sayfa %d/%d (Daha fazla kayıt var: %s)",
-                pagination.currentPage() + 1, pagination.totalPages(), pagination.hasMore()));
-        }
-
-        return new TacticalResponseDto(briefing, geoJson, traceLogs, pagination);
-    }
-
-    public Map<String, Object> getTacticalGeoJson() {
-        List<EmitterFix> topFixes = repository.findTopThreats(30);
-        List<EmitterLob> sampleLobs = repository.findLobs(null, null, null, null, null, null).stream().limit(40).toList();
-        return geoJsonBuilder.buildTacticalFeatureCollection(topFixes, sampleLobs, Collections.emptySet());
-    }
-
-    private String generateRuleBasedBriefing(String query) {
-        Map<String, Object> stats = repository.getOperationalStatistics();
-        List<EmitterFix> topThreats = repository.findTopThreats(10);
-
-        StringBuilder sb = new StringBuilder();
-        sb.append("## OPERASYONEL ÖZET\n\n");
-        sb.append(String.format("PostgreSQL büyük veri tabanında kayıtlı toplam **%s** adet kestirim ve **%s** adet LOB hattı bulunmaktadır.\n\n",
-            stats.get("totalFixes"), stats.get("totalLobs")));
-        sb.append(String.format("- **Aktif Hedefler:** %s\n- **Aralıklı Yayınlar:** %s\n- **Suskun (SILENT):** %s\n\n",
-            stats.get("activeFixes"), stats.get("intermittentFixes"), stats.get("silentFixes")));
-
-        sb.append("## ÖNCELİKLİ TEHDİTLER (Top-10)\n\n");
-        sb.append("| Fix ID | Bant | Frekans | Durum | Tehdit Seviyesi | Hata (m) |\n");
-        sb.append("| :--- | :--- | :--- | :--- | :--- | :--- |\n");
-        for (EmitterFix f : topThreats) {
-            sb.append(String.format("| **%s** | `%s` | `%.1f MHz` | `%s` | **Seviye %d** | `%.0fm` |\n",
-                f.fixId(), f.rfSignature().band(), f.rfSignature().frequencyMhz(), f.status(), f.rfSignature().band().equals("Ku") ? 5 : 4,
-                f.errorEllipse().semiMajorAxisMeters()));
-        }
-
-        sb.append("\n## HAREKÂT ÖNERİLERİ\n");
-        sb.append("1. Ku ve X-Band atış kontrol radarlarına karşı karıştırma önceliklendirmesi yapılmalıdır.\n");
-        sb.append("2. PostgreSQL indeksleri ve sayfalama mimarisi ile milyonlarca veri anlık sorgulanabilir durumdadır.\n");
-
-        sb.append("\n```json:chart\n");
-        sb.append("{\n  \"type\": \"doughnut\",\n  \"title\": \"Taktik Tehdit Bant Dağılımı\",\n");
-        sb.append("  \"data\": {\n    \"labels\": [\"X-Band\", \"S-Band\", \"C-Band\", \"Ku-Band\", \"L-Band\"],\n");
-        sb.append("    \"datasets\": [{\n      \"label\": \"Yayın Sayısı\",\n      \"data\": [45, 30, 25, 20, 30],\n");
-        sb.append("      \"backgroundColor\": [\"#00e5ff\", \"#00e676\", \"#ffb300\", \"#ff1744\", \"#b388ff\"]\n");
-        sb.append("    }]\n  }\n}\n```");
-
-        return sb.toString();
     }
 }

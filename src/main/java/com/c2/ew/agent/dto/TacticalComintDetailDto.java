@@ -1,0 +1,47 @@
+package com.c2.ew.agent.dto;
+
+import com.c2.ew.domain.model.MuhabereFrekansEntry;
+import java.time.Instant;
+import java.util.List;
+
+public record TacticalComintDetailDto(
+    String id,
+    String veriKaynagi,
+    String kuvvetSiraNo,
+    String goreviIcraEdenUstBirlik,
+    String goreviIcraEdenEhUnsuru,
+    Double yon,
+    Double ehUnsuruEnlem,
+    Double ehUnsuruBoylam,
+    Double ehUnsuruIrtifa,
+    Double yayinEnlem,
+    Double yayinBoylam,
+    Double yayinSemiMajorMeters,
+    Double yayinSemiMinorMeters,
+    Double yayinOrientationDegrees,
+    String hedefYerBilgisi,
+    String hedefKaynagi,
+    String veriGirisiYapanBirlik,
+    String lisan,
+    String protokol,
+    Double bantGenisligiHz,
+    String modulasyon,
+    Boolean mti,
+    String tip,
+    Double genlikDbm,
+    String haberlesmeSekli,
+    String calismaSekli,
+    Double altEsikSeviyesiDbm,
+    String cagriAdi,
+    String karsiCagriAdi,
+    Instant ilkTespitZamani,
+    Instant sonTespitZamani,
+    Double sureSn,
+    String teshisKimlik,
+    Double minFrekansMhz,
+    Double maxFrekansMhz,
+    List<MuhabereFrekansEntry> frekansListesi,
+    String operatorNotu,
+    String onaylayanKullanici,
+    String onayNotu
+) {}

@@ -1,0 +1,64 @@
+package com.c2.ew.agent.dto;
+
+import com.c2.ew.domain.model.AtpEntry;
+import com.c2.ew.domain.model.FrequencyEntry;
+import com.c2.ew.domain.model.PriEntry;
+import com.c2.ew.domain.model.PwEntry;
+
+import java.time.Instant;
+import java.util.List;
+
+public record TacticalEmissionDetailDto(
+    String id,
+    String veriKaynagi,
+    String kuvvetSiraNo,
+    String ustBirlikRef,
+    String ehUnsuru,
+    Double yon,
+    Double ehUnsuruEnlem,
+    Double ehUnsuruBoylam,
+    Double ehUnsuruIrtifa,
+    Double yayinEnlem,
+    Double yayinBoylam,
+    Double yayinSemiMajorMeters,
+    Double yayinSemiMinorMeters,
+    Double yayinOrientationDegrees,
+    String hedefYerBilgisi,
+    String hedefMevziBilgisi,
+    String teshisKimlik,
+    String elintNotasyonu,
+    String hedefKaynagi,
+    String polarizasyon,
+    String spotNo,
+    String pulseCw,
+    String radarGorevi,
+    String radarAdi,
+    String platformOrtami,
+    String platformTipi,
+    Double genlikDbm,
+    String modulasyon,
+    String etUygulamaDurumu,
+    Instant ilkTespitZamani,
+    Instant sonTespitZamani,
+    Double sureSn,
+    String hss,
+    Boolean taciz,
+    Double radarKesitAlani,
+    String radarIzNumarasi,
+    String ucakKuyrukNumarasi,
+    Double minFrekansMhz,
+    Double maxFrekansMhz,
+    Double minPriMicroSec,
+    Double maxPriMicroSec,
+    Double minPwMicroSec,
+    Double maxPwMicroSec,
+    Double minAtpMicroSec,
+    Double maxAtpMicroSec,
+    List<FrequencyEntry> frekansListesi,
+    List<PriEntry> priListesi,
+    List<PwEntry> pwListesi,
+    List<AtpEntry> atpListesi,
+    String operatorNotu,
+    String onaylayanKullanici,
+    String onayNotu
+) {}

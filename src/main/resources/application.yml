@@ -1,12 +1,12 @@
 server:
-  port: 8081
+  port: 8082
 
 spring:
   application:
-    name: tactical-ew-copilot
+    name: tactical-ew-copilot-3
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/tactical_ew_db
+    url: jdbc:postgresql://localhost:5432/tactical_ew_db_3
     username: ew_admin
     password: ew_secret_password
     driver-class-name: org.postgresql.Driver
@@ -14,7 +14,6 @@ spring:
   jpa:
     database-platform: org.hibernate.dialect.PostgreSQLDialect
     hibernate:
-      # Verilerin silinmemesi ve kalıcı olması için 'update' kullanılır.
       ddl-auto: update
     show-sql: false
     properties:

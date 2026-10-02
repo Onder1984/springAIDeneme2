@@ -1,0 +1,41 @@
+package com.c2.ew.agent.dto;
+
+import java.time.Instant;
+
+public record TacticalComintSummaryDto(
+    String id,
+    String veriKaynagi,
+    String kuvvetSiraNo,
+    String goreviIcraEdenUstBirlik,
+    String goreviIcraEdenEhUnsuru,
+    Double yon,
+    Double ehUnsuruEnlem,
+    Double ehUnsuruBoylam,
+    Double yayinEnlem,
+    Double yayinBoylam,
+    Double yayinSemiMajorMeters,
+    Double yayinSemiMinorMeters,
+    Double yayinOrientationDegrees,
+    String hedefYerBilgisi,
+    String hedefKaynagi,
+    String lisan,
+    String protokol,
+    Double bantGenisligiHz,
+    String modulasyon,
+    Boolean mti,
+    String tip,
+    Double genlikDbm,
+    String haberlesmeSekli,
+    String calismaSekli,
+    Double altEsikSeviyesiDbm,
+    String cagriAdi,
+    String karsiCagriAdi,
+    Instant sonTespitZamani,
+    Double sureSn,
+    String teshisKimlik,
+    Double minFrekansMhz,
+    Double maxFrekansMhz,
+    String operatorNotu,
+    String onaylayanKullanici,
+    String onayNotu
+) {}
