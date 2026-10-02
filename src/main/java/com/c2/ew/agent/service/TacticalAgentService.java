@@ -5,7 +5,6 @@ import com.c2.ew.agent.dto.TacticalComintSummaryDto;
 import com.c2.ew.agent.dto.TacticalEmissionSummaryDto;
 import com.c2.ew.agent.dto.TacticalQueryRequest;
 import com.c2.ew.agent.dto.TacticalResponseDto;
-import com.c2.ew.agent.geojson.TacticalGeoJsonBuilder;
 import com.c2.ew.agent.tools.ComintEmissionTools;
 import com.c2.ew.agent.tools.RadarEmissionTools;
 import org.slf4j.Logger;
@@ -101,18 +100,15 @@ public class TacticalAgentService {
         """;
 
     private final ChatClient chatClient;
-    private final TacticalGeoJsonBuilder geoJsonBuilder;
     private final RadarEmissionTools radarTools;
     private final ComintEmissionTools comintTools;
 
     public TacticalAgentService(
         ChatClient.Builder chatClientBuilder,
         @Autowired(required = false) ChatMemory chatMemory,
-        TacticalGeoJsonBuilder geoJsonBuilder,
         RadarEmissionTools radarTools,
         ComintEmissionTools comintTools
     ) {
-        this.geoJsonBuilder = geoJsonBuilder;
         this.radarTools = radarTools;
         this.comintTools = comintTools;
 
@@ -224,9 +220,6 @@ public class TacticalAgentService {
             executionLogs.addAll(RadarEmissionTools.drainCallLogs());
             executionLogs.addAll(ComintEmissionTools.drainCallLogs());
 
-            List<TacticalEmissionSummaryDto> queriedEmissions = RadarEmissionTools.drainQueriedEmissions();
-            List<TacticalComintSummaryDto> queriedComints = ComintEmissionTools.drainQueriedComints();
-
             // Sayfalama bilgisini güvenli şekilde al
             PaginationMetadata pagination = RadarEmissionTools.drainPaginationMetadata(conversationId);
             if (pagination == null) {
@@ -243,16 +236,13 @@ public class TacticalAgentService {
                 ComintEmissionTools.resetTurnFlags(conversationId);
             }
 
-            Map<String, Object> tacticalGeoJson = geoJsonBuilder.buildUnifiedFeatureCollection(queriedEmissions, queriedComints);
-
             log.info("Taktik analiz tamamlandı. Yapılan araç çağrıları: {}", executionLogs);
-            return new TacticalResponseDto(operationalBriefing, tacticalGeoJson, executionLogs, pagination);
+            return new TacticalResponseDto(operationalBriefing, executionLogs, pagination);
 
         } catch (Exception ex) {
             log.error("Taktik Sorgu İşleme Hatası: {}", ex.getMessage(), ex);
             return new TacticalResponseDto(
                 "❌ **Taktik Analiz Hatası:** " + ex.getMessage() + "\nLütfen sistem telemetri loglarını ve API bağlantınızı kontrol ediniz.",
-                Collections.emptyMap(),
                 List.of("HATA: " + ex.getMessage()),
                 null
             );

@@ -5,12 +5,9 @@ package com.c2.ew.agent.dto;
  */
 public record TacticalQueryRequest(
     String userPrompt,
-    String conversationId,
-    Double centerLat,
-    Double centerLon,
-    Double radiusKm
+    String conversationId
 ) {
-    public TacticalQueryRequest(String userPrompt, Double centerLat, Double centerLon, Double radiusKm) {
-        this(userPrompt, "c2-default-session", centerLat, centerLon, radiusKm);
+    public TacticalQueryRequest(String userPrompt) {
+        this(userPrompt, "c2-tactical-session");
     }
 }

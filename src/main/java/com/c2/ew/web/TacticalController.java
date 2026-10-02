@@ -6,7 +6,6 @@ import com.c2.ew.agent.dto.TacticalEmissionDetailDto;
 import com.c2.ew.agent.dto.TacticalEmissionSummaryDto;
 import com.c2.ew.agent.dto.TacticalQueryRequest;
 import com.c2.ew.agent.dto.TacticalResponseDto;
-import com.c2.ew.agent.geojson.TacticalGeoJsonBuilder;
 import com.c2.ew.agent.service.TacticalAgentService;
 import com.c2.ew.agent.tools.ComintEmissionTools;
 import com.c2.ew.agent.tools.RadarEmissionTools;
@@ -25,31 +24,20 @@ public class TacticalController {
     private final TacticalAgentService agentService;
     private final RadarEmissionTools emissionTools;
     private final ComintEmissionTools comintTools;
-    private final TacticalGeoJsonBuilder geoJsonBuilder;
 
     public TacticalController(
         TacticalAgentService agentService,
         RadarEmissionTools emissionTools,
-        ComintEmissionTools comintTools,
-        TacticalGeoJsonBuilder geoJsonBuilder
+        ComintEmissionTools comintTools
     ) {
         this.agentService = agentService;
         this.emissionTools = emissionTools;
         this.comintTools = comintTools;
-        this.geoJsonBuilder = geoJsonBuilder;
     }
 
     @PostMapping("/analyze")
     public ResponseEntity<TacticalResponseDto> analyze(@RequestBody(required = false) TacticalQueryRequest request) {
         return ResponseEntity.ok(agentService.processTacticalQuery(request));
-    }
-
-    // --- MÜŞTEREK TAKTİK HARİTA (COP) GEOJSON ---
-    @GetMapping("/cop/geojson")
-    public ResponseEntity<Map<String, Object>> getCommonOperationalPictureGeoJson() {
-        var radars = emissionTools.getEmissionsForCop(300);
-        var comints = comintTools.getComintForCop(300);
-        return ResponseEntity.ok(geoJsonBuilder.buildUnifiedFeatureCollection(radars, comints));
     }
 
     // --- RADAR / ELINT ENDPOINTS ---
@@ -100,15 +88,6 @@ public class TacticalController {
         return ResponseEntity.ok(emissionTools.getEmissionDetails(id));
     }
 
-    @GetMapping("/time-frequency")
-    public ResponseEntity<List<Map<String, Object>>> getTimeFrequency(
-        @RequestParam(required = false) String teshisKimlik,
-        @RequestParam(required = false) String veriKaynagi,
-        @RequestParam(required = false) String radarAdi,
-        @RequestParam(required = false, defaultValue = "300") Integer limit
-    ) {
-        return ResponseEntity.ok(emissionTools.getTimeFrequencyDistribution(teshisKimlik, veriKaynagi, radarAdi, limit));
-    }
 
     @GetMapping("/et-harassment")
     public ResponseEntity<List<TacticalEmissionSummaryDto>> getEtAndHarassment() {

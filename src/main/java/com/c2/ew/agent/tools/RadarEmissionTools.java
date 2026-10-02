@@ -43,14 +43,7 @@ public class RadarEmissionTools {
     private static final Logger log = LoggerFactory.getLogger(RadarEmissionTools.class);
 
     private static final ThreadLocal<List<String>> CALL_LOGS = ThreadLocal.withInitial(ArrayList::new);
-    private static final ThreadLocal<Map<String, TacticalEmissionSummaryDto>> QUERIED_EMISSIONS = ThreadLocal.withInitial(LinkedHashMap::new);
     // state-based pagedToolCalledInTurn
-
-        public static void putQueriedEmission(TacticalEmissionSummaryDto dto) {
-        if (dto != null) {
-            QUERIED_EMISSIONS.get().put(dto.id(), dto);
-        }
-    }
 
     public static void resetTurnFlags() {
         getActiveState().pagedToolCalledInTurn = false;
@@ -123,11 +116,7 @@ public class RadarEmissionTools {
         return logs;
     }
 
-    public static List<TacticalEmissionSummaryDto> drainQueriedEmissions() {
-        List<TacticalEmissionSummaryDto> list = new ArrayList<>(QUERIED_EMISSIONS.get().values());
-        QUERIED_EMISSIONS.get().clear();
-        return list;
-    }
+
 
         public static PaginationMetadata drainPaginationMetadata() {
         return drainPaginationMetadata(getCurrentConversationId());
@@ -164,12 +153,7 @@ public class RadarEmissionTools {
         return drainPaginationMetadata();
     }
 
-    public List<TacticalEmissionSummaryDto> getEmissionsForCop(int limit) {
-        Page<TacticalEmissionEntity> pageResult = emissionRepo.findAll(
-            PageRequest.of(0, limit, Sort.by(Sort.Direction.DESC, "sonTespitZamani"))
-        );
-        return pageResult.getContent().stream().map(this::toSummaryDto).collect(Collectors.toList());
-    }
+
 
     private final TacticalEmissionJpaRepository emissionRepo;
     private final TacticalComintJpaRepository comintRepo;
@@ -262,7 +246,6 @@ public class RadarEmissionTools {
         );
 
         List<TacticalEmissionSummaryDto> dtoList = page.getContent().stream().map(this::toSummaryDto).collect(Collectors.toList());
-        dtoList.forEach(d -> QUERIED_EMISSIONS.get().put(d.id(), d));
         return dtoList;
     }
 
@@ -345,7 +328,6 @@ public class RadarEmissionTools {
         state.emissionHasMore = pageResult.hasNext();
 
         List<TacticalEmissionSummaryDto> dtos = pageResult.getContent().stream().map(this::toSummaryDto).collect(Collectors.toList());
-        dtos.forEach(d -> QUERIED_EMISSIONS.get().put(d.id(), d));
 
         String note = String.format("Sayfa %d / %d (Toplam %d hedef)", pageIdx + 1, pageResult.getTotalPages(), pageResult.getTotalElements());
         return PagedResult.of(dtos, pageIdx, size, pageResult.getTotalElements(), note);
@@ -402,7 +384,6 @@ public class RadarEmissionTools {
         );
 
         List<TacticalEmissionSummaryDto> dtos = list.stream().map(this::toSummaryDto).collect(Collectors.toList());
-        dtos.forEach(d -> QUERIED_EMISSIONS.get().put(d.id(), d));
         return dtos;
     }
 
@@ -831,8 +812,7 @@ public class RadarEmissionTools {
                     pair.put("taktikRolTahmini", tacticalEstimate);
 
                     correlations.add(pair);
-                    QUERIED_EMISSIONS.get().put(r.getId(), toSummaryDto(r));
-                    ComintEmissionTools.putQueriedComint(ComintEmissionTools.toStaticDto(c));
+
                 }
             }
         }
@@ -914,10 +894,7 @@ public class RadarEmissionTools {
         res.put("tacizYapanHedefSayisi", taciz);
         res.put("ornekTacizHedefleri", tacizList.stream().limit(8).collect(Collectors.toList()));
         res.put("ornekEtHedefleri", jammedList.stream().limit(8).collect(Collectors.toList()));
-        all.stream()
-            .filter(e -> Boolean.TRUE.equals(e.getTaciz()) || e.getEtUygulamaDurumu() == EtUygulamaDurumu.SUSTURDU || e.getEtUygulamaDurumu() == EtUygulamaDurumu.UYGULANIYOR)
-            .limit(25)
-            .forEach(e -> QUERIED_EMISSIONS.get().put(e.getId(), toSummaryDto(e)));
+
 
         res.put("harekatTavsiyesi", etSuccessRate < 50 ? "ET Basari Orani dusuk (% " + etSuccessRate + "). Karistirici frekans guc seviyesinin ve huzme yonlendirmenin (beamforming) artirilmasi tavsiye edilir." : "ET soft-kill etkinligi yuksek. Susturulan hedeflerin emisyon tekrari yapip yapmadigi RESM ile gozetlenmelidir.");
 
@@ -1119,11 +1096,7 @@ public class RadarEmissionTools {
             return Double.compare((double) b.get("aktifYayinSuresiDk"), (double) a.get("aktifYayinSuresiDk"));
         });
 
-        // Taktik harita icin oncelikli hedefleri QUERIED_EMISSIONS'a koy
-        for (int i = 0; i < Math.min(30, all.size()); i++) {
-            TacticalEmissionEntity e = all.get(i);
-            QUERIED_EMISSIONS.get().put(e.getId(), toSummaryDto(e));
-        }
+
 
         // Tepe saatleri tespit et (En yuksek yayin suresi olan 3 saat)
         List<Integer> hourIndices = new ArrayList<>();

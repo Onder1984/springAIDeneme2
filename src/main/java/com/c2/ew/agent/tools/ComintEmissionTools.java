@@ -32,14 +32,7 @@ public class ComintEmissionTools {
     private static final Logger log = LoggerFactory.getLogger(ComintEmissionTools.class);
 
     private static final ThreadLocal<List<String>> COMINT_CALL_LOGS = ThreadLocal.withInitial(ArrayList::new);
-    private static final ThreadLocal<Map<String, TacticalComintSummaryDto>> QUERIED_COMINTS = ThreadLocal.withInitial(LinkedHashMap::new);
     // state-based pagedToolCalledInTurn
-
-        public static void putQueriedComint(TacticalComintSummaryDto dto) {
-        if (dto != null) {
-            QUERIED_COMINTS.get().put(dto.id(), dto);
-        }
-    }
 
     public static void resetTurnFlags() {
         getActiveState().pagedToolCalledInTurn = false;
@@ -108,11 +101,7 @@ public class ComintEmissionTools {
         return logs;
     }
 
-    public static List<TacticalComintSummaryDto> drainQueriedComints() {
-        List<TacticalComintSummaryDto> list = new ArrayList<>(QUERIED_COMINTS.get().values());
-        QUERIED_COMINTS.get().clear();
-        return list;
-    }
+
 
         public static PaginationMetadata drainPaginationMetadata() {
         return drainPaginationMetadata(getCurrentConversationId());
@@ -147,12 +136,7 @@ public class ComintEmissionTools {
         return drainPaginationMetadata();
     }
 
-    public List<TacticalComintSummaryDto> getComintForCop(int limit) {
-        Page<TacticalComintEntity> pageResult = comintRepo.findAll(
-            PageRequest.of(0, limit, Sort.by(Sort.Direction.DESC, "sonTespitZamani"))
-        );
-        return pageResult.getContent().stream().map(this::toSummaryDto).collect(Collectors.toList());
-    }
+
 
     private final TacticalComintJpaRepository comintRepo;
     private final ObjectMapper objectMapper;
@@ -290,7 +274,6 @@ public class ComintEmissionTools {
         List<TacticalComintSummaryDto> dtos = page.getContent().stream().map(this::toSummaryDto).collect(Collectors.toList());
 
         for (TacticalComintSummaryDto dto : dtos) {
-            QUERIED_COMINTS.get().put(dto.id(), dto);
         }
         return dtos;
     }
@@ -367,7 +350,6 @@ public class ComintEmissionTools {
         List<TacticalComintSummaryDto> dtos = resultPage.getContent().stream().map(this::toSummaryDto).collect(Collectors.toList());
 
         for (TacticalComintSummaryDto dto : dtos) {
-            QUERIED_COMINTS.get().put(dto.id(), dto);
         }
 
         String note = String.format("Sayfa %d / %d (Toplam %d muhabere yayını)", pageIdx + 1, resultPage.getTotalPages(), resultPage.getTotalElements());
@@ -447,7 +429,6 @@ public class ComintEmissionTools {
         List<TacticalComintSummaryDto> dtos = list.stream().map(this::toSummaryDto).collect(Collectors.toList());
 
         for (TacticalComintSummaryDto dto : dtos) {
-            QUERIED_COMINTS.get().put(dto.id(), dto);
         }
         return dtos;
     }
@@ -776,11 +757,6 @@ public class ComintEmissionTools {
         res.put("darbePatlamaBurstSayisi", burst);
         res.put("karistirmaGaydaSayisi", gayda);
         res.put("karistirmaGurultuSayisi", gurultu);
-
-        comintRepo.findAll().stream()
-            .filter(e -> e.getHaberlesmeSekli() == HaberlesmeSekli.KRIPTO || e.getHaberlesmeSekli() == HaberlesmeSekli.DARBE_PATLAMA || (e.getHaberlesmeSekli() != null && e.getHaberlesmeSekli().name().contains("KARISTIRMA")))
-            .limit(20)
-            .forEach(e -> QUERIED_COMINTS.get().put(e.getId(), toSummaryDto(e)));
         res.put("kriptoOraniYuzde", total > 0 ? Math.round((kripto * 100.0) / total) : 0);
         res.put("taktikEmare", burst > 0 ? "Darbe Patlama (Burst) tespit edildi! Dusman acil taktik veri/hedef aktarimi yapiyor olabilir." : "Standart kriptolu ve ses trafigi mevcut.");
 
