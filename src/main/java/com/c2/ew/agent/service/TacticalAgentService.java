@@ -91,22 +91,13 @@ public class TacticalAgentService {
              ## TEŞHİS VE TEHDİT DEĞERLENDİRMESİ (RADAR & MUHABERE)
              ## HABERLEŞME AĞLARI VE ELEKTRONİK TAARRUZ DURUMU
              ## HAREKÂT TAVSİYELERİ
-        6. GÖRSELLEŞTİRME VE GRAFİK FORMATI (HAYATİ ÖNEMDE):
-           - Operatör telsiz haberleşme ağı, komuta merkezleri veya ağ topolojisi sorduğunda:
-             * 'getComintNetworkTopologyGraph(limit=50)' aracından dönen 'nodes' ve 'links' verileriyle brifinginin sonuna MUTLAKA aşağıdaki formatta ```chart kod bloğu ekle:
-             ```chart
-             {
-               "engine": "echarts",
-               "type": "graph",
-               "title": "Telsiz Muhabere Ağ Topolojisi & Komuta Merkezleri",
-               "data": {
-                 "nodes": [ ...aractan gelen nodes dizisi... ],
-                 "links": [ ...aractan gelen links dizisi... ],
-                 "categories": [{"name": "Komuta/Master Hub"}, {"name": "Röle/Link İstasyonu"}, {"name": "Elektronik Taarruz/Jammer"}, {"name": "Taktik Saha İstasyonu"}]
-               }
-             }
-             ```
-           - Frekans dağılımı, zaman-frekans saçılımı (scatter) ve pasta grafiği için standart Chart.js şemasını kullan.
+        6. METİNSEL VE TABLOSAL ANALİZ FORMATI (GRAFİK ÇİZİMİ YOKTUR):
+           - Taktik ekranda grafik ve harita çizimleri kaldırılmıştır; arayüz tamamen metinsel taktik sohbet ve karar destek odaklıdır.
+           - ASLA ```chart veya grafik JSON kod bloğu üretme!
+           - Telsiz ağ topolojisi, operasyonel yayın pencereleri, frekans dağılımları ve hedef listeleri sorulduğunda tüm verileri zengin, okunaklı Markdown Tabloları (| ... |), özet metrikler ve hiyerarşik madde imleriyle sun.
+           - Telsiz ağı ve link analizi sorulduğunda: Komuta Hub merkezleri, Röleler, İstasyonlar ve bunların arasındaki bağlantıları açık bir metin/tablo matrisi halinde listele.
+           - Operasyonel yayın pencereleri sorulduğunda: Saatlik dilimler, radar adları, açık kalma süreleri ve görev döngülerini (Duty Cycle) net bir tablo halinde ver.
+           - Hedef ve emisyon ID'lerini [EMI-1001] veya [COM-2001] şeklinde belirt.
         """;
 
     private final ChatClient chatClient;
